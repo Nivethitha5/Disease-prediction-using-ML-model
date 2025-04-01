@@ -1,0 +1,32 @@
+#create a requirement file which contain all the libraries which needed for data preprocessing. The file can be updates if requied.
+#Install all the required libraries
+pip install -r requirements.txt
+
+#Store the individual datasets into a separate variable 
+import pandas as pd
+df1 = pd.read_csv("diseased_GSE138458_sorted.csv", index_col=0)
+
+#convert data to numeric. Since the data will be stored mostly as object
+df1 = df1.apply(pd.to_numeric, errors='coerce')
+
+#check for any duplication in the datasets 
+print(df1.index.duplicated().sum())
+df1 = df1.groupby(df1.index).mean() #group them based on the mean of the genes
+
+#drop NA values from the datasets 
+df1.dropna
+df3= df3.drop(index=['38047', '38231', '38777', '39873', '40057', '40238', '40787', '41153','41883']) #drop data which seem irrevalent
+
+#segregate the data based on common genes. 
+
+#intersection
+common_genes = df1.index
+for df in [df1, df2, df3, df4, df5, df6, df7]:
+    common_genes = common_genes.intersection(df.index)
+df1 = df1.loc[common_genes]
+
+#union can be used in case all the datasets wants to be kept
+  
+#Do log transformation in case the gene expression ranges from more than 16
+
+
