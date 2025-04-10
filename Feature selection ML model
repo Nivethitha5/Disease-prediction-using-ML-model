@@ -1,0 +1,26 @@
+#import the whole datasets
+
+import pandas as pd
+data = pd.read_csv("normalized_common_data.csv", index_col=0)
+
+#upload the top genes dataset
+topgenes = pd.read_csv("top_genes.csv", index_col=0)
+
+#separate the genes from the whole datasets 
+topgenes_list = topgenes.index.tolist()
+filtered_df = data.loc[data.index.intersection(topgenes_list)]
+
+filtered_df.to_csv("filtered_genes_dataset.csv", index=True) #save the data to a file
+
+filtered_df_columns = filtered_df.columns
+sampleid = [col.split()[0] for col in filtered_df_columns]
+labels2 = ["SLE" if "SLE" in col.upper() else "healthy" for col in filtered_df_columns]
+filtered_df.columns = sampleid
+
+#same as ML model prediction
+
+#train and test split
+
+#Ml model prediction
+
+#visualize the data using the confusion matrix, classification report and roc-auc curve
