@@ -1,1 +1,137 @@
+#add the healthy or diseased label into the dataset using excel. Add a new column above the sample ID row and use "A2 && SLE &&
 
+import pandas as pd
+# Load the file (adjust the path)
+original_data = pd.read_csv("d:\\mscproject\\datasets\\normalized_common_data.csv", index_col=0)
+
+# Original column names like 'GSM4109027 SLE'
+original_columns = original_data.columns
+# Extract sample IDs and labels
+sample_ids = [col.split()[0] for col in original_columns]
+labels = ["SLE" if "SLE" in col.upper() else "Healthy" for col in original_columns]
+# Update column names to just sample IDs
+original_data.columns = sample_ids
+
+# Transpose so samples are rows, genes are columns
+df_transposed = original_data.T
+df_transposed.head()
+
+#Add a new column to the datasets for the label
+df_transposed["label"] = labels
+df_transposed.head()
+
+df_transposed['label'].value_counts() #This gives the count of each classes-SLE or healthy
+
+#label encoding for each classes i.e Healthy-0, SLE-1
+from sklearn.preprocessing import LabelEncoder
+le = LabelEncoder()
+df_transposed['label_encoded'] = le.fit_transform(df_transposed['label'])
+# Check mapping: 0 = Healthy, 1 = SLE (usually)
+print(dict(zip(le.classes_, le.transform(le.classes_))))
+
+#training and test data split 
+from sklearn.model_selection import train_test_split
+# Split into features and target
+X = df_transposed.drop(['label', 'label_encoded'], axis=1)
+y = df_transposed['label_encoded']
+# Stratified split to preserve class balance
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+
+#to check whether the data was split into equal classes
+import numpy as np
+print("Training label distribution:", np.bincount(y_train))
+print("Test label distribution:", np.bincount(y_test))
+
+#Normalization for ML model 
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)  # must use same scaler
+
+#SVM
+from sklearn.metrics import accuracy_score 
+from sklearn.svm import SVC 
+svm = SVC(kernel="rbf", probability=True, random_state=42)
+svm.fit(X_train_scaled, y_train)
+y_pred_svm = svm.predict(X_test_scaled)
+print(f"SVM Accuracy: {accuracy_score(y_test, y_pred_svm):.4f}")
+
+#Random Forest 
+from sklearn.ensemble import RandomForestClassifier
+rf = RandomForestClassifier(n_estimators=100, random_state=42)
+rf.fit(X_train_scaled, y_train)
+y_pred_rf = rf.predict(X_test_scaled)
+print(f"Random Forest Accuracy: {accuracy_score(y_test, y_pred_rf):.4f}")
+
+#XGBoost
+pip install xgboost
+from xgboost import XGBClassifier
+xgb = XGBClassifier(use_label_encoder=False, eval_metric="logloss", random_state=42)
+xgb.fit(X_train_scaled, y_train)
+y_pred_xgb = xgb.predict(X_test_scaled)
+print(f"XGBoost Accuracy: {accuracy_score(y_test, y_pred_xgb):.4f}")
+
+#visualize the data using confusion matrix, classification report and ROC curve
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    classification_report,
+    roc_curve,
+    auc)
+
+def plot_confusion_matrix(y_true, y_pred, title="Confusion Matrix"):
+    cm = confusion_matrix(y_true, y_pred)
+    plt.figure(figsize=(5, 4))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', cbar=False)
+    plt.xlabel("Predicted")
+    plt.ylabel("Actual")
+    plt.title(title)
+    plt.show()
+plot_confusion_matrix(y_test, y_pred_svm, "SVM")
+plot_confusion_matrix(y_test, y_pred_rf, "Random Forest")
+plot_confusion_matrix(y_test, y_pred_xgb, "XGBoost")
+
+#roc-auc curve
+from sklearn.metrics import roc_curve, auc
+def plot_roc(model, X_test, y_test, title="ROC Curve"):
+    y_prob = model.predict_proba(X_test)[:, 1]  # probability for class 1
+    fpr, tpr, _ = roc_curve(y_test, y_prob)
+    roc_auc = auc(fpr, tpr)    
+    plt.plot(fpr, tpr, color='darkorange', lw=2, label='AUC = %0.2f' % roc_auc)
+    plt.plot([0, 1], [0, 1], color='navy', lw=1, linestyle='--')
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title(title)
+    plt.legend(loc="lower right")
+    plt.grid(True)
+    plt.show()
+plot_roc(svm, X_test_scaled, y_test, "SVM ROC")  # assuming svm_model is defined
+plot_roc(rf, X_test_scaled, y_test, "Random Forest ROC")  # assuming svm_model is defined
+plot_roc(xgb, X_test_scaled, y_test, "XGBoost ROC")  # assuming svm_model is defined
+
+#classification report
+from sklearn.metrics import classification_report
+models = {"SVM": svm, "Random Forest": rf, "XGBoost": xgb}
+for name, model in models.items():
+    print(f"\n{name} Performance:")
+    print(classification_report(y_test, model.predict(X_test_scaled)))
+
+#SHAP- Explainable AI
+
+!pip install shap
+import shap
+# Initialize SHAP explainer
+explainer = shap.Explainer(xgb)
+# Compute SHAP values
+shap_values = explainer(X_train)
+# Plot summary of top features
+shap.summary_plot(shap_values, X_train, feature_names=X.columns)
+
+mean_shap = np.abs(shap_values.values).mean(axis=0)
+shap_importance = pd.DataFrame({'gene': X.columns, 'shap_importance': mean_shap})
+top_genes = shap_importance.sort_values(by='shap_importance', ascending=False).head(20)
+print(top_genes)
+
+top_genes.to_csv("top_genes.csv", index=False) #save the data into csv files
