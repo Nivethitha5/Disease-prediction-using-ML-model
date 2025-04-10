@@ -3,6 +3,7 @@
 pip install -r requirements.txt
 
 #Store the individual datasets into a separate variable 
+#All the diseased and healthy datasets should be stored in individual variable 
 import pandas as pd
 df1 = pd.read_csv("diseased_GSE138458_sorted.csv", index_col=0)
 
@@ -11,22 +12,107 @@ df1 = df1.apply(pd.to_numeric, errors='coerce')
 
 #check for any duplication in the datasets 
 print(df1.index.duplicated().sum())
-df1 = df1.groupby(df1.index).mean() #group them based on the mean of the genes
+df1 = df1.groupby(df1.index).mean() #group them based on the mean of the genes if there is any duplication present 
 
 #drop NA values from the datasets 
 df1.dropna
 df3= df3.drop(index=['38047', '38231', '38777', '39873', '40057', '40238', '40787', '41153','41883']) #drop data which seem irrevalent
 
+#Do log transformation in case the gene expression ranges from more than 16
+print("Min value:", df2.min().min())
+print("Max value:", df2.max().max()) #This will give the whole picture of your datasets for log transformation
+
+#Log transformation if the datasets contain only positive values.
+import numpy as np
+df2 = np.log2(df2) 
+
+#Log transformation if the datasets contain both positive and negative values.
+df3 = np.arcsinh(df3)
+
 #segregate the data based on common genes. 
 
 #intersection
 common_genes = df1.index
-for df in [df1, df2, df3, df4, df5, df6, df7]:
+for df in [df1, df2, df3, df4, df5, df6, df7, df11, df12, df13, df14, df15, df16, df17, df18, df19, df20, df21]:
     common_genes = common_genes.intersection(df.index)
-df1 = df1.loc[common_genes]
+
+df1c = df1.loc[common_genes]
+df18c = df18.loc[df18.index.intersection(common_genes)] #Sometimes common genes won't be seggregated if you are using datasets from other source( datasets). This can be used during that situation
+
+common_df = [df1c, df2c, df3c, df4c, df5c, df6c, df7c, df11c, df12c, df13c, df14c, df15c, df16c, df17c, df18c, df19c, df20c, df21c]
+common_df = pd.concat(common_df, axis=1) #merge all the datasets
+common_df.head()
 
 #union can be used in case all the datasets wants to be kept
-  
-#Do log transformation in case the gene expression ranges from more than 16
+import pandas as pd
+datasets = [df1, df2, df3, df4, df5, df6, df7, df11, df12, df13, df14, df15, df16, df17, df18, df19, df20, df21]
+all_genes = set().union(*[set(df.index) for df in datasets])
+aligned_datasets = [df.reindex(all_genes) for df in datasets]
+union_df = pd.concat(aligned_datasets, axis=1)  #merge all the datasets
+union_df.fillna(0, inplace=True)  # Replace missing values with 0
 
+union_df = union_df.apply(lambda x: x.replace(0, x[x != 0].median()), axis=1)  # Replace 0s with gene median
+union_df = union_df.apply(lambda x: x.replace(0, x[x != 0].mean()), axis=1)  #Replace 0s with gene mean
 
+#Quantile normalization for maintaining the biological 
+
+import numpy as np
+import pandas as pd
+from scipy.stats import rankdata
+def quantile_normalize(df):
+    sorted_df = np.sort(df.values, axis=0)  # Sort each column
+    rank_mean = np.mean(sorted_df, axis=1)  # Compute row-wise mean
+    ranks = np.apply_along_axis(rankdata, 0, df) - 1  # Get ranks (0-based index)
+    norm_df = pd.DataFrame(rank_mean[ranks.astype(int)], index=df.index, columns=df.columns)
+    return norm_df
+df_commonlist = quantile_normalize(common_df)
+# Apply quantile normalization to each dataframe in the list
+df1c_qn = quantile_normalize(df1c)
+df2c_qn = quantile_normalize(df2c)
+
+#visualize the obtained data using density plot
+
+import seaborn as sns
+import matplotlib.pyplot as plt
+plt.figure(figsize=(12, 6))
+#Before Normalization
+sns.kdeplot(common_df.values.flatten(), label="Before Normalization", color='red', fill=True)
+#After Normalization
+sns.kdeplot(df_commonlist.values.flatten(), label="After Norm4alization", color='blue', fill=True)
+plt.xlabel("Expression Value")
+plt.ylabel("Density")
+plt.title("Distribution of Gene Expression Before and After Normalization")
+plt.legend()
+plt.show()
+
+#assigning batch for each datasets
+batch_labels_c = ( [1] * df1c_qn.shape[1] + [2] * df2c_qn.shape[1] + [3] * df3c_qn.shape[1] + [4] * df4c_qn.shape[1] + [5] * df5c_qn.shape[1] + [6] * df6c_qn.shape[1] + [7] * df7c_qn.shape[1]+ [8] * df11c_qn.shape[1] + [9] * df12c_qn.shape[1] + [10] * df13c_qn.shape[1] + [11] * df14c_qn.shape[1] + [12] * df15c_qn.shape[1] + [13] * df16c_qn.shape[1] + [14] * df17c_qn.shape[1] + [15] * df18c_qn.shape[1] + [16] * df19c_qn.shape[1] + [17] * df20c_qn.shape[1] + [18] * df21c_qn.shape[1])
+
+#visualize the obtained data using PCA plot
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+import seaborn as sns
+pca = PCA(n_components=2)
+pca_result = pca.fit_transform(df_commonlist.T)  # Transpose: genes as features, samples as rows
+# Convert to DataFrame for plotting
+pca_df = pd.DataFrame(pca_result, columns=["PC1", "PC2"])
+pca_df["Batch"] = batch_labels_c
+plt.figure(figsize=(8, 6))
+sns.scatterplot(data=pca_df, x="PC1", y="PC2", hue="Batch", palette="Set2", alpha=0.8)
+plt.title("PCA Before Batch Correction")
+plt.show()
+
+#installing the required library for batch effect correction
+pip install neurocombat 
+
+import pandas as pd
+from neuroCombat import neuroCombat
+batch_labels_c = pd.DataFrame({'batch': batch_labels_c})
+df_corrected_c = neuroCombat(dat=df_commonlist, covars=batch_labels_c, batch_col='batch')
+
+df_corrected_c = df_corrected_c["data"]
+df_corrected_c = pd.DataFrame(df_corrected_c, index=df_commonlist.index, columns=df_commonlist.columns)
+
+#visualize the data using density and PCA plot to observed for proper data preprocessing
