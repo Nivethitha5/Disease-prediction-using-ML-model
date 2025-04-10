@@ -116,3 +116,6 @@ df_corrected_c = df_corrected_c["data"]
 df_corrected_c = pd.DataFrame(df_corrected_c, index=df_commonlist.index, columns=df_commonlist.columns)
 
 #visualize the data using density and PCA plot to observed for proper data preprocessing
+
+#save the data into the csv file
+df_corrected_c.to_csv("normalized_common_data.csv", index=True)
