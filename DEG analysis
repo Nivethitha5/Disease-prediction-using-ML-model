@@ -1,0 +1,27 @@
+#After merging the multiple dataset using common genes
+expr_data <- read.csv("your_file.csv", row.names = 1) #uploading the data
+expr_matrix <- as.matrix(expr_data) #converting it as a matrix
+
+#Quantile normalization. Note the datasets should be log-transformed.
+expr_matrix <- normalizeBetweenArrays(expr_matrix, method = "quantile") 
+
+#Create your condition (phenotype) vector
+condition <- c(rep("SLE", 840), rep("Healthy", 817)) 
+
+#Creating design matrix
+condition <- factor(condition)  # Ensure it's a factor
+design <- model.matrix(~ 0 + condition)  # No intercept
+colnames(design) <- levels(condition)   # Rename columns to "SLE" and "Healthy"
+
+#fit the model
+library(limma) #limma is used for microarray dataset and DeSeq is used for RNA-Seq datasets
+fit <- lmFit(expr_matrix, design)
+contrast <- makeContrasts(SLEvsHealthy = SLE - Healthy, levels = design)
+fit2 <- contrasts.fit(fit, contrast)
+fit2 <- eBayes(fit2)
+
+#pvalue, logFC, adjusted p-values, etc., for each gene.
+results <- topTable(fit2, adjust = "fdr", number = Inf)
+
+# Filter by adjusted p-value and logFC
+significant_DEGs <- results[results$adj.P.Val < 0.05 & abs(results$logFC) > 1, ]
